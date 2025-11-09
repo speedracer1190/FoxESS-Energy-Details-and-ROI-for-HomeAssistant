@@ -1,0 +1,41 @@
+alias: Tariff selector (Fox)
+  description: ''
+  triggers:
+  - at: '15:00:00'
+    trigger: time
+  - at: '21:00:00'
+    trigger: time
+  - at: 00:00:15
+    trigger: time
+  actions:
+  - choose:
+    - conditions:
+      - condition: time
+        after: '15:00:00'
+        before: '21:00:00'
+      sequence:
+      - target:
+          entity_id:
+          - utility_meter.grid_import_daily
+          - utility_meter.load_daily
+        data:
+          tariff: peak
+        action: utility_meter.select_tariff
+    - conditions:
+      - condition: or
+        conditions:
+        - condition: time
+          after: '21:00:00'
+          before: '23:59:59'
+        - condition: time
+          after: 00:00:00
+          before: '15:00:00'
+      sequence:
+      - target:
+          entity_id:
+          - utility_meter.grid_import_daily
+          - utility_meter.load_daily
+        data:
+          tariff: offpeak
+        action: utility_meter.select_tariff
+  mode: single
