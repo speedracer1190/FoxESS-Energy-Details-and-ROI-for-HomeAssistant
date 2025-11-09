@@ -1,0 +1,240 @@
+1) Create the two Number helpers (inputs)
+A. Battery Purchase Price
+
+Settings → Devices & services → Helpers → + Create helper → Number
+
+Fill in:
+
+Name: Battery Purchase Price
+
+Unit of measurement: AUD
+
+Minimum: 0
+
+Maximum: 20000
+
+Step: 10
+
+Mode: Box
+
+Initial value: 7500
+
+Create
+👉 This makes input_number.battery_purchase_price
+
+B. ROI Opening Savings (pre-HA)
+
++ Create helper → Number
+
+Fill in:
+
+Name: ROI Opening Savings (pre-HA)
+
+Unit of measurement: AUD
+
+Minimum: 0
+
+Maximum: 20000
+
+Step: 1
+
+Mode: Box
+
+Initial value: 0
+
+Create
+👉 This makes input_number.roi_opening_savings
+
+2) Create the Utility Meters (tariff split + monthly rollup)
+A. Grid & Load (Peak/Off-peak split)
+
+You likely already did this—skip if done. Otherwise:
+
+Do twice (once for Grid Import, once for Total Load):
+
+Grid Import Daily
+
++ Create helper → Utility meter
+
+Name: Grid Import Daily
+Input sensor: sensor.foxess_grid_consumption
+Cycle: Daily
+Toggle Periodically resetting = On
+
+Click Next, then Add tariffs: peak, offpeak
+
+Create
+👉 This creates: utility_meter.grid_import_daily and its sensors:
+
+sensor.grid_import_daily_peak
+
+sensor.grid_import_daily_offpeak
+
+Load Daily
+
++ Create helper → Utility meter
+
+Name: Load Daily
+Input sensor: sensor.foxess_load
+Cycle: Daily
+Periodically resetting: On
+
+Tariffs: peak, offpeak
+
+Create
+👉 Sensors: sensor.load_daily_peak, sensor.load_daily_offpeak
+
+Your two automations should already be switching these tariffs at 15:00 = PEAK and 21:00 = OFFPEAK.
+
+B. Monthly savings rollup
+
++ Create helper → Utility meter
+
+Name: Savings Monthly
+Input sensor: sensor.savings_today
+Cycle: Monthly
+Toggle Delta values = On
+Toggle Periodically resetting = On
+Leave Tariffs empty
+
+Create
+👉 This makes sensor.savings_monthly
+
+3) Create the Template Sensors (Savings & ROI)
+
+Create each one via:
+Settings → Devices & services → Helpers → + Create helper → Template → Template sensor
+
+A. Cost & Savings (daily)
+1) Grid Cost Today
+
+Name: Grid Cost Today
+
+Unit of measurement: AUD
+
+Device class: monetary
+
+State template:
+
+{% set peak_rate = 0.4128 %}
+{% set off_rate  = 0.2293 %}
+{% set kwh_peak  = states('sensor.grid_import_daily_peak')|float(0) %}
+{% set kwh_off   = states('sensor.grid_import_daily_offpeak')|float(0) %}
+{{ (kwh_peak * peak_rate + kwh_off * off_rate) | round(2) }}
+
+2) Cost If All From Grid (Today)
+
+Name: Cost If All From Grid (Today)
+
+Unit: AUD
+
+Device class: monetary
+
+State template:
+
+{% set peak_rate = 0.4128 %}
+{% set off_rate  = 0.2293 %}
+{% set kwh_peak  = states('sensor.load_daily_peak')|float(0) %}
+{% set kwh_off   = states('sensor.load_daily_offpeak')|float(0) %}
+{{ (kwh_peak * peak_rate + kwh_off * off_rate) | round(2) }}
+
+3) Export Income Today
+
+Name: Export Income Today
+
+Unit: AUD
+
+Device class: monetary
+
+State template:
+
+{% set export_kwh = states('sensor.foxess_feedin')|float(0) %}
+{% set fit = 0.01 %}
+{{ (export_kwh * fit) | round(2) }}
+
+4) Savings Today
+
+Name: Savings Today
+
+Unit: AUD
+
+Device class: monetary
+
+State template:
+
+{% set would_pay     = states('sensor.cost_if_all_from_grid_today')|float(0) %}
+{% set did_pay       = states('sensor.grid_cost_today')|float(0) %}
+{% set export_income = states('sensor.export_income_today')|float(0) %}
+{{ (would_pay - did_pay + export_income) | round(2) }}
+
+B. ROI sensors (monthly + running total)
+5) Savings This Month
+
+Name: Savings This Month
+
+Unit: AUD
+
+Device class: monetary
+
+State template:
+
+{{ states('sensor.savings_monthly') | float(0) | round(2) }}
+
+6) Total Savings To Date
+
+Name: Total Savings To Date
+
+Unit: AUD
+
+Device class: monetary
+
+State template:
+
+{{
+  (states('input_number.roi_opening_savings')|float(0)
+   + states('sensor.savings_monthly')|float(0)) | round(2)
+}}
+
+7) ROI Remaining
+
+Name: ROI Remaining
+
+Unit: AUD
+
+Device class: monetary
+
+State template:
+
+{{
+  (states('input_number.battery_purchase_price')|float(0)
+   - states('sensor.total_savings_to_date')|float(0)) | round(2)
+}}
+
+8) ROI Profit To Date
+
+Name: ROI Profit To Date
+
+Unit: AUD
+
+Device class: monetary
+
+State template:
+
+{{
+  (states('sensor.total_savings_to_date')|float(0)
+   - states('input_number.battery_purchase_price')|float(0)) | round(2)
+}}
+
+4) Quick checks
+
+Developer Tools → States: verify these exist and show numbers:
+
+sensor.grid_import_daily_peak, sensor.grid_import_daily_offpeak
+
+sensor.load_daily_peak, sensor.load_daily_offpeak
+
+sensor.grid_cost_today, sensor.cost_if_all_from_grid_today, sensor.export_income_today, sensor.savings_today
+
+sensor.savings_monthly, sensor.savings_this_month, sensor.total_savings_to_date, sensor.roi_remaining, sensor.roi_profit_to_date
+
+If any show unknown, they’ll populate as data flows (e.g., after the next tariff switch or the next “Savings Today” update).
